@@ -1,10 +1,19 @@
 # hegel-skill
 
-An [Agent Skill](https://agentskills.io) that teaches agents how to write property-based tests using [Hegel](https://github.com/hegeldev/hegel). Works with Claude Code, Codex, and any agent that supports the Agent Skills standard.
+An [Agent Skill](https://agentskills.io) that teaches agents how to write property-based tests using [Hegel](https://github.com/hegeldev/hegel-core). 
+
+When you ask an agent to write property-based tests, this skill provides:
+
+- A methodology for identifying testable properties from code evidence
+- Generator discipline guidelines to avoid over-constraining inputs
+- Language-specific API references and idiomatic patterns
+- Guidance on evolving existing unit tests into property-based tests
 
 This currently only supports [hegel-rust](https://github.com/hegeldev/hegel-rust) but go support is coming soon, and we intend for it to support all languages with hegel libraries.
 
 ## Installation
+
+This should work with Claude Code, Codex, and any agent that supports the Agent Skills standard.
 
 ### Claude Code
 
@@ -43,15 +52,8 @@ Copy the skill into your project's `.agents/skills/` directory:
 cp -r skills/hegel .agents/skills/hegel
 ```
 
-## What It Does
+Or use npx:
 
-When you ask an agent to write property-based tests, this skill provides:
-
-- A methodology for identifying testable properties from code evidence
-- Generator discipline guidelines to avoid over-constraining inputs
-- Language-specific API references and idiomatic patterns
-- Guidance on evolving existing unit tests into property-based tests
-
-## Supported Languages
-
-- Rust
+```bash
+npx skills add hegeldev/hegel-skill
+```
