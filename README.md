@@ -1,28 +1,51 @@
 # hegel-skill
 
-A [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code/skills) that teaches agents how to write property-based tests using [Hegel](https://github.com/hegeldev/hegel-rust).
+An [Agent Skill](https://agentskills.io) that teaches agents how to write property-based tests using [Hegel](https://github.com/hegeldev/hegel). Works with Claude Code, Codex, and any agent that supports the Agent Skills standard.
+
+This currently only supports [hegel-rust](https://github.com/hegeldev/hegel-rust) but go support is coming soon, and we intend for it to support all languages with hegel libraries.
 
 ## Installation
 
-Use as a plugin with Claude Code:
+### Claude Code
+
+Add the marketplace and install:
+
+```bash
+/plugin marketplace add hegeldev/hegel-skill
+/plugin install hegel-skill@hegeldev-hegel-skill
+```
+
+Or for local development:
 
 ```bash
 claude --plugin-dir path/to/hegel-skill
 ```
 
-Or add to your project settings (`.claude/settings.json`):
+### Codex
 
-```json
-{
-  "enabledPlugins": {
-    "hegel-skill": true
-  }
-}
+Use the built-in skill installer:
+
+```
+$skill-installer install https://github.com/hegeldev/hegel-skill/tree/main/skills/hegel
+```
+
+Or copy the skill directory manually:
+
+```bash
+cp -r skills/hegel ~/.codex/skills/hegel
+```
+
+### Any Agent (cross-client)
+
+Copy the skill into your project's `.agents/skills/` directory:
+
+```bash
+cp -r skills/hegel .agents/skills/hegel
 ```
 
 ## What It Does
 
-When you ask Claude Code to write property-based tests, fuzz code, or find edge cases, this skill provides:
+When you ask an agent to write property-based tests, this skill provides:
 
 - A methodology for identifying testable properties from code evidence
 - Generator discipline guidelines to avoid over-constraining inputs

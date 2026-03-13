@@ -1,0 +1,13 @@
+{
+  "plugins": [
+    {
+      "name": "hegel-skill",
+      "source": {
+        "source": "github",
+        "repo": "hegeldev/hegel-skill",
+        "path": ".",
+        "release": "latest"
+      }
+    }
+  ]
+}
