@@ -50,18 +50,39 @@ Write one test per property. Don't cram multiple properties into one test.
 
 ### 4. Check for Existing Tests to Evolve
 
-Before writing tests from scratch, check if existing unit tests or example-based
-tests can be evolved into property-based tests. Load `references/evolving-tests.md`
-for guidance. This is often the fastest path to valuable PBTs.
+Before writing tests from scratch, **always** check if existing unit tests or
+example-based tests can be evolved into property-based tests. Load
+`references/evolving-tests.md` for guidance.
+
+Specifically:
+
+- Look at every existing test file. Tests with hardcoded seeds, parameterized
+  examples, or multiple similar test cases are prime candidates.
+- Tests that use `rand` with fixed seeds are especially good candidates — the
+  randomness should come from hegel instead so failures produce shrinkable
+  counterexamples.
+
+When you evolve an existing test, **modify the existing test file** rather than
+creating a new one. Add hegel tests alongside (or replacing) the existing tests
+in the same file where the original tests live. Do not create a separate
+`test_hegel.rs` or similar — property-based tests are tests like any other and
+belong with the code they're testing.
 
 ### 5. Write the Tests
 
 For each property:
 
-1. Choose the **simplest possible generators** — start with no bounds, unless bounds are logically necessary (e.g. if a number has to be non-zero it's fine to force it to be, but lists should not have `max_size` set unless there is a compelling correctness reason to set them or poor performance has been observed when actually running the test)
-2. Draw values using `tc.draw()`
-3. Run the code under test
-4. Assert the property
+1. **Add tests to the appropriate existing test file.** If there's already a
+   `test_foo.rs` covering the module, add hegel tests there. Only create a new
+   file if no relevant test file exists.
+2. Choose the **simplest possible generators** — start with no bounds, unless
+   bounds are logically necessary (e.g. if a number has to be non-zero it's
+   fine to force it to be, but lists should not have `max_size` set unless there
+   is a compelling correctness reason to set them or poor performance has been
+   observed when actually running the test)
+3. Draw values using `tc.draw()`
+4. Run the code under test
+5. Assert the property
 
 ### 6. Run and Reflect
 
@@ -182,12 +203,60 @@ if (a > b) {
 }
 ```
 
+## Handling Randomness in Code Under Test
+
+When the code under test requires an RNG (e.g., `fn sample(&self, rng: &mut impl Rng)`),
+**do not** create a seeded RNG like `ChaCha8Rng::seed_from_u64(seed)` with a
+hegel-generated seed. This defeats shrinking — hegel can only shrink the seed
+integer, not the actual random decisions the RNG makes.
+
+Instead, use hegel's `rand` feature to get a hegel-controlled RNG. See the
+language-specific reference for API details.
+
+### Rand version mismatch
+
+Hegel's `rand` feature uses rand 0.9. If the project uses an older version of
+rand (e.g., 0.8), the RNG traits will be incompatible. In this case, ask the
+user whether they'd like to upgrade the project's rand dependency to 0.9. This
+is usually straightforward (the main API changes are `gen_range` -> `random_range`,
+`gen::<T>()` -> `random::<T>()`, `thread_rng()` -> `rng()`,
+`from_entropy` -> `from_os_rng`). Do not silently fall back to seeded ChaCha —
+that defeats the purpose.
+
+### Two modes: artificial vs true randomness
+
+`generators::randoms()` has two modes:
+
+- **Default (artificial randomness):** Every random decision goes through hegel,
+  enabling fine-grained shrinking of individual random values. This is the best
+  option for most code.
+
+- **`generators::randoms().use_true_random()`:** Generates a single seed via
+  hegel, then creates a real `StdRng` from it. Hegel can only shrink the seed,
+  not individual random decisions. Use this when the code under test does
+  **rejection sampling** or otherwise depends on the RNG producing
+  statistically random-looking output. Artificial randomness can cause rejection
+  loops to hang because the controlled byte sequences don't look random enough.
+
+**How to choose:** Start with the default. If tests hang or time out because the
+code does rejection sampling internally, switch to `.use_true_random()`.
+
+### Refactoring concrete RNG types
+
+If the code under test takes a concrete RNG type (e.g., `rng: &mut ChaCha8Rng`)
+rather than a trait bound, consider whether it should be refactored to accept
+`impl Rng` or `&mut dyn RngCore` instead. This is both better API design and
+makes the code testable with hegel's random generator. Suggest this refactoring
+to the user.
+
 ## Common Mistakes
 
 1. **Over-constraining generators** — Adding bounds "just in case." This hides bugs and makes tests less valuable. See Generator Discipline above.
 2. **Testing trivial properties** — `assert!(x == x)` or `assert!(vec.len() >= 0)` test nothing. Every property should be falsifiable by a buggy implementation.
 3. **Using the implementation as the oracle** — If your test calls the same function to compute the expected result, it can never fail. Use an independent reference implementation (do not just copy the code to write this!), a simpler algorithm, or a structural property.
 4. **Generating too broadly then filtering almost everything** — If `.filter()` or `tc.assume()` rejects most inputs, Hegel will give up. Restructure your generators instead (e.g., use `.map()` or dependent generation).
+5. **Creating a separate test file for hegel tests** — Property-based tests belong alongside the existing tests for the same code. Don't put them in `test_hegel.rs` or `test_properties.rs` — add them to the existing test files.
+6. **Using manually seeded RNGs** — Don't generate a seed with hegel then create `ChaCha8Rng::seed_from_u64(seed)`. Use `generators::randoms()` with the `rand` feature so hegel controls the random decisions and can shrink them. See "Handling Randomness" above.
 
 ## Quick Setup
 
@@ -197,6 +266,13 @@ if (a > b) {
 # Cargo.toml
 [dev-dependencies]
 hegel = { git = "https://github.com/hegeldev/hegel-rust" }
+```
+
+If the code under test uses `rand`:
+
+```toml
+[dev-dependencies]
+hegel = { git = "https://github.com/hegeldev/hegel-rust", features = ["rand"] }
 ```
 
 Requires [`uv`](https://github.com/astral-sh/uv) on PATH. Run with `cargo test`.

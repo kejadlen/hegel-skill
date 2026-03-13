@@ -9,6 +9,14 @@ Add to `Cargo.toml`:
 hegel = { git = "https://github.com/hegeldev/hegel-rust" }
 ```
 
+If the code under test uses `rand` and you need hegel-controlled RNG instances,
+enable the `rand` feature:
+
+```toml
+[dev-dependencies]
+hegel = { git = "https://github.com/hegeldev/hegel-rust", features = ["rand"] }
+```
+
 Requires [`uv`](https://github.com/astral-sh/uv) installed and on PATH.
 
 Run tests with `cargo test`. Hegel tests use `#[hegel::test]` in place of
@@ -282,6 +290,35 @@ let code: String = tc.draw(
 ```
 
 - `.fullmatch()` — Require the pattern matches the entire string
+
+### Random Generator (requires `rand` feature)
+
+```rust
+// Cargo.toml: hegel = { ..., features = ["rand"] }
+
+// Default: artificial randomness — every random decision is shrinkable
+let mut rng = tc.draw(generators::randoms());
+
+// True randomness — single shrinkable seed, real StdRng output
+let mut rng = tc.draw(generators::randoms().use_true_random());
+```
+
+The returned `HegelRandom` implements `rand::RngCore` (rand 0.9).
+
+**Default mode** routes every `next_u32`/`next_u64`/`fill_bytes` call through
+hegel, so the shrinker can minimize individual random decisions. Best for most
+code.
+
+**`use_true_random()` mode** generates a single seed via hegel then creates a
+real `StdRng`. Use this when the code under test does rejection sampling or
+other algorithms that need statistically random-looking output — artificial
+randomness can cause these to loop indefinitely.
+
+**Rand version compatibility:** hegel uses rand 0.9. If the project uses rand
+0.8, the traits are incompatible. Ask the user to upgrade rand (main changes:
+`gen_range` -> `random_range`, `gen::<T>()` -> `random::<T>()`,
+`thread_rng()` -> `rng()`, `from_entropy` -> `from_os_rng`). Do not fall back
+to `ChaCha8Rng::seed_from_u64(hegel_seed)` — that defeats shrinking.
 
 ## Combinator Methods
 
@@ -575,6 +612,53 @@ fn test_set_union_commutes(tc: hegel::TestCase) {
     let b: HashSet<i32> = tc.draw(generators::hashsets(generators::integers()));
     assert_eq!(a.union(&b).collect::<HashSet<_>>(),
                b.union(&a).collect::<HashSet<_>>());
+}
+```
+
+### Testing code that uses randomness
+
+```rust
+use hegel::generators::{self, Generator};
+
+// Code under test: fn sample(weights: &[f64], rng: &mut impl Rng) -> usize
+
+#[hegel::test]
+fn test_sample_returns_valid_index(tc: hegel::TestCase) {
+    let weights: Vec<f64> = tc.draw(generators::vecs(
+        generators::floats::<f64>().min_value(0.0).exclude_min()
+    ).min_size(1));
+    let mut rng = tc.draw(generators::randoms());
+    let idx = sample(&weights, &mut rng);
+    assert!(idx < weights.len());
+}
+```
+
+If the code does rejection sampling and the test hangs with the default mode,
+switch to `use_true_random()`:
+
+```rust
+#[hegel::test]
+fn test_rejection_sampler(tc: hegel::TestCase) {
+    let weights: Vec<f64> = tc.draw(generators::vecs(
+        generators::floats::<f64>().min_value(0.0).exclude_min()
+    ).min_size(1));
+    // use_true_random() avoids hangs from rejection sampling loops
+    let mut rng = tc.draw(generators::randoms().use_true_random());
+    let idx = rejection_sample(&weights, &mut rng);
+    assert!(idx < weights.len());
+}
+```
+
+Do NOT do this (defeats shrinking):
+
+```rust
+// BAD: hegel can only shrink the seed, not the random decisions
+#[hegel::test]
+fn test_sample_bad(tc: hegel::TestCase) {
+    let seed = tc.draw(generators::integers::<u64>());
+    let mut rng = ChaCha8Rng::seed_from_u64(seed);  // WRONG
+    let idx = sample(&weights, &mut rng);
+    assert!(idx < weights.len());
 }
 ```
 

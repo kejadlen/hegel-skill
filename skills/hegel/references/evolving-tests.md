@@ -15,10 +15,15 @@ Look for tests that:
   are easy to parameterize with generators.
 - **Test round-trip behavior.** `assert_eq!(decode(encode(x)), x)` is already
   a property — just replace `x` with a generator.
-- **Contain existing randomness.** Tests that use `rand` or hand-rolled random
-  inputs are begging to be property-based tests.
+- **Contain existing randomness or hardcoded seeds.** Tests that create RNGs
+  with fixed seeds (`ChaCha8Rng::seed_from_u64(42)`) or use `rand` are
+  excellent candidates. Replace the manual RNG with `generators::randoms()`
+  so hegel controls the randomness and can shrink failures.
 - **Test invariants across examples.** If every test case checks the same
   condition (e.g., output is sorted, length is preserved), that's a property.
+- **Parameterized tests over hardcoded inputs.** Tests that loop over a list of
+  specific sizes, distributions, or configurations should generate those
+  parameters instead.
 
 ## Poor Candidates
 
@@ -220,6 +225,13 @@ fn test_sort_is_permutation(tc: hegel::TestCase) {
     assert_eq!(sorted, expected);
 }
 ```
+
+## Where to Put Evolved Tests
+
+**Modify the existing test file.** If the unit tests live in `test_foo.rs`,
+add or replace with hegel tests in `test_foo.rs`. Do not create a separate
+`test_hegel.rs` — property-based tests are regular tests and belong with the
+code they cover.
 
 ## Research Insights
 
