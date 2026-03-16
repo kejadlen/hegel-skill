@@ -168,9 +168,9 @@ Add generator bounds **only** when:
 2. **You need to avoid undefined behavior.** For example, division by zero.
 3. **A test failure has been investigated** and confirmed to be outside the function's domain.
 
-### Prefer `tc.assume()` Over Generator Bounds for Multi-Value Constraints
+### Avoid rejection sampling where possible
 
-When a constraint involves relationships between multiple generated values, use `tc.assume()`:
+When a constraint involves relationships between multiple generated values, you may use `tc.assume()`:
 
 ```rust
 let a = tc.draw(generators::integers::<i32>());
@@ -178,7 +178,7 @@ let b = tc.draw(generators::integers::<i32>());
 tc.assume(a != b);  // constraint relates two values
 ```
 
-However it is better to avoid these altogether when you can. 
+This example is perfectly fine, but it is better to avoid `assume` altogether when you can:
 
 e.g.
 
@@ -204,6 +204,10 @@ if (a > b) {
     (a, b) = (b, a);
 }
 ```
+
+It is particularly important to avoid rejection sampling in cases where the rejection rate is likely to be high.
+
+For example `st.integers().map(|n| n * 2)` is much better than `st.integers().filter(|n| n % 2 == 0)`, as the former constructs an even number directly, while the latter throws away around 50% of test cases.
 
 ## Handling Randomness in Code Under Test
 
