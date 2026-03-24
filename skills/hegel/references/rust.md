@@ -147,8 +147,8 @@ let bounded: f64 = tc.draw(generators::floats::<f64>()
 Config methods:
 - `.min_value(T)` — Inclusive lower bound
 - `.max_value(T)` — Inclusive upper bound
-- `.exclude_min()` — Make lower bound exclusive
-- `.exclude_max()` — Make upper bound exclusive
+- `.exclude_min(bool)` — Make lower bound exclusive
+- `.exclude_max(bool)` — Make upper bound exclusive
 - `.allow_nan(bool)` — Default: `true` if unbounded, `false` if bounded
 - `.allow_infinity(bool)` — Default: `true` if unbounded on that side
 
@@ -185,9 +185,6 @@ Config methods (both):
 ```rust
 // Always returns the same value
 let x: i32 = tc.draw(generators::just(42));
-
-// Always returns None
-let n: Option<i32> = tc.draw(generators::none::<i32>());
 
 // Always returns ()
 let u: () = tc.draw(generators::unit());
@@ -247,15 +244,15 @@ let map = tc.draw(generators::fixed_dicts()
 
 ### Tuple Generators
 
-Functions `tuples2()` through `tuples12()`:
+Use the `tuples!` macro with 2–12 component generators:
 
 ```rust
-let pair: (i32, String) = tc.draw(generators::tuples2(
+let pair: (i32, String) = tc.draw(generators::tuples!(
     generators::integers::<i32>(),
     generators::text(),
 ));
 
-let triple: (bool, i32, f64) = tc.draw(generators::tuples3(
+let triple: (bool, i32, f64) = tc.draw(generators::tuples!(
     generators::booleans(),
     generators::integers::<i32>(),
     generators::floats::<f64>(),
@@ -286,10 +283,10 @@ let ipv6: String = tc.draw(generators::ip_addresses().v6());
 
 ```rust
 let code: String = tc.draw(
-    generators::from_regex(r"[A-Z]{3}-[0-9]{3}").fullmatch());
+    generators::from_regex(r"[A-Z]{3}-[0-9]{3}").fullmatch(true));
 ```
 
-- `.fullmatch()` — Require the pattern matches the entire string
+- `.fullmatch(bool)` — Require the pattern matches the entire string
 
 ### Random Generator (requires `rand` feature)
 
@@ -300,7 +297,7 @@ let code: String = tc.draw(
 let mut rng = tc.draw(generators::randoms());
 
 // True randomness — single shrinkable seed, real StdRng output
-let mut rng = tc.draw(generators::randoms().use_true_random());
+let mut rng = tc.draw(generators::randoms().use_true_random(true));
 ```
 
 The returned `HegelRandom` implements `rand::RngCore` (rand 0.9).
@@ -432,7 +429,7 @@ fn test_user(tc: hegel::TestCase) {
     // Customize specific fields:
     let adult: User = tc.draw(UserGenerator::new()
         .with_age(generators::integers().min_value(18).max_value(120))
-        .with_name(generators::from_regex(r"[A-Z][a-z]{2,15}").fullmatch()));
+        .with_name(generators::from_regex(r"[A-Z][a-z]{2,15}").fullmatch(true)));
     assert!(adult.age >= 18);
 }
 ```
@@ -704,7 +701,7 @@ use hegel::generators::{self, Generator};
 #[hegel::test]
 fn test_sample_returns_valid_index(tc: hegel::TestCase) {
     let weights: Vec<f64> = tc.draw(generators::vecs(
-        generators::floats::<f64>().min_value(0.0).exclude_min()
+        generators::floats::<f64>().min_value(0.0).exclude_min(true)
     ).min_size(1));
     let mut rng = tc.draw(generators::randoms());
     let idx = sample(&weights, &mut rng);
@@ -719,10 +716,10 @@ switch to `use_true_random()`:
 #[hegel::test]
 fn test_rejection_sampler(tc: hegel::TestCase) {
     let weights: Vec<f64> = tc.draw(generators::vecs(
-        generators::floats::<f64>().min_value(0.0).exclude_min()
+        generators::floats::<f64>().min_value(0.0).exclude_min(true)
     ).min_size(1));
-    // use_true_random() avoids hangs from rejection sampling loops
-    let mut rng = tc.draw(generators::randoms().use_true_random());
+    // use_true_random(true) avoids hangs from rejection sampling loops
+    let mut rng = tc.draw(generators::randoms().use_true_random(true));
     let idx = rejection_sample(&weights, &mut rng);
     assert!(idx < weights.len());
 }

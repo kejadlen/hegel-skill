@@ -50,13 +50,13 @@ addition, test the full range unless there's a reason not to.
 | `0..100i32` | `generators::integers::<i32>().min_value(0).max_value(99)` |
 | `any::<bool>()` | `generators::booleans()` |
 | `any::<f64>()` | `generators::floats::<f64>()` |
-| `"[a-z]{1,10}"` | `generators::from_regex(r"[a-z]{1,10}").fullmatch()` |
+| `"[a-z]{1,10}"` | `generators::from_regex(r"[a-z]{1,10}").fullmatch(true)` |
 | `any::<String>()` | `generators::text()` |
 | `prop::collection::vec(strat, 0..10)` | `generators::vecs(gen).max_size(9)` |
 | `prop::collection::hash_set(strat, 0..5)` | `generators::hashsets(gen).max_size(4)` |
 | `prop::collection::hash_map(k, v, 0..5)` | `generators::hashmaps(k, v).max_size(4)` |
 | `prop::option::of(strat)` | `generators::optional(gen)` |
-| `(strat_a, strat_b)` | `generators::tuples2(gen_a, gen_b)` |
+| `(strat_a, strat_b)` | `generators::tuples!(gen_a, gen_b)` |
 | `Just(value)` | `generators::just(value)` |
 | `prop_oneof![s1, s2]` | `hegel::one_of!(g1, g2)` |
 | `strat.prop_map(f)` | `gen.map(f)` |

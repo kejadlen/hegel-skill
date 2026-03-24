@@ -327,7 +327,7 @@ that defeats the purpose.
   enabling fine-grained shrinking of individual random values. This is the best
   option for most code.
 
-- **`generators::randoms().use_true_random()`:** Generates a single seed via
+- **`generators::randoms().use_true_random(true)`:** Generates a single seed via
   hegel, then creates a real `StdRng` from it. Hegel can only shrink the seed,
   not individual random decisions. Use this when the code under test does
   **rejection sampling** or otherwise depends on the RNG producing
@@ -335,7 +335,7 @@ that defeats the purpose.
   loops to hang because the controlled byte sequences don't look random enough.
 
 **How to choose:** Start with the default. If tests hang or time out because the
-code does rejection sampling internally, switch to `.use_true_random()`.
+code does rejection sampling internally, switch to `.use_true_random(true)`.
 
 ### Refactoring concrete RNG types
 
