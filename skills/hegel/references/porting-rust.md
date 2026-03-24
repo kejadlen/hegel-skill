@@ -100,16 +100,16 @@ proptest! {
 Hegel:
 
 ```rust
-use hegel::Generator;
-use hegel::generators::{self, Generator as _};
+use hegel::DefaultGenerator;
+use hegel::generators::{self, DefaultGenerator as _, Generator};
 
-#[derive(Debug, Generator)]
+#[derive(Debug, DefaultGenerator)]
 struct Point { x: f64, y: f64 }
 
 #[hegel::test]
 fn test_point(tc: hegel::TestCase) {
-    let p: Point = tc.draw(PointGenerator::new());
-    // Or customize: tc.draw(PointGenerator::new().with_x(generators::floats().min_value(0.0)))
+    let p: Point = tc.draw(generators::default::<Point>());
+    // Or customize: tc.draw(Point::default_generator().x(generators::floats().min_value(0.0)))
 }
 ```
 
@@ -181,7 +181,7 @@ Key differences:
 
 | Quickcheck | Hegel |
 |-----------|-------|
-| `Arbitrary for T` (trait impl) | `Generator<T>` (trait impl) or `#[derive(Generator)]` |
+| `Arbitrary for T` (trait impl) | `Generator<T>` (trait impl) or `#[derive(DefaultGenerator)]` |
 | `fn arbitrary(g: &mut Gen) -> Self` | `fn do_draw(&self, tc: &TestCase) -> T` |
 | `fn shrink(&self) -> Box<dyn Iterator>` | Automatic — no shrink implementation needed |
 | `g.size()` for size control | Implicit in server-based generation |

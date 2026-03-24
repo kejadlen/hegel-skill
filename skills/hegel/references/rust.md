@@ -50,11 +50,13 @@ Attributes:
 - `test_cases: u64` — Number of test cases (default: 100)
 - `verbosity: Verbosity` — `Quiet`, `Normal`, `Verbose`, or `Debug`
 - `seed: Option<u64>` — Fixed seed for reproducible runs
+- `derandomize: bool` — Use a fixed seed derived from the test name (default: `true` in CI)
+- `suppress_health_check: [HealthCheck; N]` — Suppress specific health checks (see below)
 
 ### `Hegel::new().run()` (builder form)
 
 ```rust
-use hegel::{Hegel, Verbosity};
+use hegel::{Hegel, Settings, Verbosity};
 
 #[test]
 fn test_with_builder() {
@@ -62,25 +64,54 @@ fn test_with_builder() {
         let n = tc.draw(generators::integers::<i32>());
         assert!(n == n);
     })
-    .test_cases(500)
-    .verbosity(Verbosity::Verbose)
+    .settings(Settings::new()
+        .test_cases(500)
+        .verbosity(Verbosity::Verbose))
     .run();
 }
 ```
 
-Or the shorthand:
+### Settings and HealthCheck
+
+`Settings` controls test execution. It can be passed to `#[hegel::test]` as
+named arguments or as a positional `Settings` object:
 
 ```rust
-use hegel::hegel;
+use hegel::{HealthCheck, Settings};
 
-#[test]
-fn test_shorthand() {
-    hegel(|tc| {
-        let n = tc.draw(generators::integers::<i32>());
-        assert!(n == n);
-    });
-}
+// Named arguments (most common)
+#[hegel::test(test_cases = 500, derandomize = true)]
+fn test_named(tc: hegel::TestCase) { /* ... */ }
+
+// Suppress health checks
+#[hegel::test(suppress_health_check = [HealthCheck::FilterTooMuch])]
+fn test_filtered(tc: hegel::TestCase) { /* ... */ }
+
+// Suppress all health checks
+#[hegel::test(suppress_health_check = HealthCheck::all())]
+fn test_all_suppressed(tc: hegel::TestCase) { /* ... */ }
+
+// Positional Settings object
+#[hegel::test(Settings::new().test_cases(500))]
+fn test_positional(tc: hegel::TestCase) { /* ... */ }
 ```
+
+`Settings` builder methods:
+- `.test_cases(u64)` — Number of test cases (default: 100)
+- `.verbosity(Verbosity)` — Output level
+- `.seed(Option<u64>)` — Fixed seed for reproducibility
+- `.derandomize(bool)` — Use deterministic seed from test name (default: `true` in CI)
+- `.database(Option<String>)` — Path for failure database, or `None` to disable
+- `.suppress_health_check(impl IntoIterator<Item = HealthCheck>)` — Suppress checks
+
+`HealthCheck` variants:
+- `FilterTooMuch` — Too many test cases rejected via `assume()`
+- `TooSlow` — Test execution is too slow
+- `TestCasesTooLarge` — Generated test cases are too large
+- `LargeInitialTestCase` — The smallest natural input is very large
+
+In CI environments (detected automatically), the database is disabled and tests
+are derandomized by default.
 
 ## TestCase Methods
 
@@ -390,9 +421,34 @@ let n: i32 = tc.draw(hegel::one_of!(
 
 All branches must return the same type.
 
+### `#[hegel::composite]`
+
+Define a reusable generator as a function. The first parameter must be
+`TestCase`; additional parameters become arguments to the generator. The
+function must have an explicit return type.
+
+```rust
+#[hegel::composite]
+fn points(tc: hegel::TestCase, max_coord: f64) -> (f64, f64) {
+    let x = tc.draw(generators::floats::<f64>().min_value(-max_coord).max_value(max_coord));
+    let y = tc.draw(generators::floats::<f64>().min_value(-max_coord).max_value(max_coord));
+    (x, y)
+}
+
+#[hegel::test]
+fn test_points(tc: hegel::TestCase) {
+    let (x, y) = tc.draw(points(100.0));
+    assert!(x.abs() <= 100.0);
+}
+```
+
+This is generally preferred over `compose!` because it creates a named,
+reusable generator that can take parameters.
+
 ### `compose!`
 
-Build a generator from imperative code:
+Build an inline generator from imperative code (useful for one-off generators
+that don't need to be reused):
 
 ```rust
 use hegel::compose;
@@ -406,15 +462,15 @@ let point_gen = compose!(|tc| {
 let (x, y): (f64, f64) = tc.draw(point_gen);
 ```
 
-### `#[derive(Generator)]`
+### `#[derive(DefaultGenerator)]`
 
 Auto-derive a generator for structs you own:
 
 ```rust
-use hegel::Generator;
-use hegel::generators::{self, Generator as _};
+use hegel::DefaultGenerator;
+use hegel::generators::{self, DefaultGenerator as _, Generator};
 
-#[derive(Generator, Debug)]
+#[derive(DefaultGenerator, Debug)]
 struct User {
     name: String,
     age: u32,
@@ -424,21 +480,21 @@ struct User {
 #[hegel::test]
 fn test_user(tc: hegel::TestCase) {
     // Default generators for all fields:
-    let user: User = tc.draw(UserGenerator::new());
+    let user: User = tc.draw(generators::default::<User>());
 
     // Customize specific fields:
-    let adult: User = tc.draw(UserGenerator::new()
-        .with_age(generators::integers().min_value(18).max_value(120))
-        .with_name(generators::from_regex(r"[A-Z][a-z]{2,15}").fullmatch(true)));
+    let adult: User = tc.draw(User::default_generator()
+        .age(generators::integers().min_value(18).max_value(120))
+        .name(generators::from_regex(r"[A-Z][a-z]{2,15}").fullmatch(true)));
     assert!(adult.age >= 18);
 }
 ```
 
-The derive creates a `<Type>Generator` struct with:
-- `::new()` — Uses default generators for all fields
-- `.with_<field>(gen)` — Override a specific field's generator
+The derive implements the `DefaultGenerator` trait and creates a generator with:
+- `generators::default::<Type>()` or `Type::default_generator()` — Uses default generators for all fields
+- `.<field>(gen)` — Override a specific field's generator
 
-Works with enums too, creating `<Enum><Variant>Generator` for each variant.
+Works with enums too.
 
 ### `derive_generator!`
 
@@ -446,7 +502,7 @@ For types you don't own:
 
 ```rust
 use hegel::derive_generator;
-use hegel::generators::{self, Generator};
+use hegel::generators::{self, DefaultGenerator, Generator};
 
 struct Point { x: f64, y: f64 }
 
@@ -454,9 +510,9 @@ derive_generator!(Point { x: f64, y: f64 });
 
 #[hegel::test]
 fn test_point(tc: hegel::TestCase) {
-    let p: Point = tc.draw(PointGenerator::new()
-        .with_x(generators::floats().min_value(-10.0).max_value(10.0))
-        .with_y(generators::floats().min_value(-10.0).max_value(10.0)));
+    let p: Point = tc.draw(generators::default::<Point>()
+        .x(generators::floats().min_value(-10.0).max_value(10.0))
+        .y(generators::floats().min_value(-10.0).max_value(10.0)));
 }
 ```
 
@@ -469,7 +525,7 @@ use hegel::generators::{self, Generator};
 
 #[hegel::test]
 fn test_json_round_trip(tc: hegel::TestCase) {
-    let value = tc.draw(UserGenerator::new());
+    let value = tc.draw(generators::default::<User>());
     let json = serde_json::to_string(&value).unwrap();
     let recovered: User = serde_json::from_str(&json).unwrap();
     assert_eq!(value, recovered);
@@ -538,10 +594,10 @@ fn test_valid_index(tc: hegel::TestCase) {
 ### Custom type with derived generator
 
 ```rust
-use hegel::Generator;
-use hegel::generators::{self, Generator as _};
+use hegel::DefaultGenerator;
+use hegel::generators::{self, DefaultGenerator as _, Generator};
 
-#[derive(Generator, Debug, Clone, PartialEq)]
+#[derive(DefaultGenerator, Debug, Clone, PartialEq)]
 struct Config {
     max_retries: u32,
     timeout_ms: u64,
@@ -550,8 +606,8 @@ struct Config {
 
 #[hegel::test]
 fn test_config_merge(tc: hegel::TestCase) {
-    let base = tc.draw(ConfigGenerator::new());
-    let override_cfg = tc.draw(ConfigGenerator::new());
+    let base = tc.draw(generators::default::<Config>());
+    let override_cfg = tc.draw(generators::default::<Config>());
     let merged = base.merge(&override_cfg);
     // Property: merged config should have override's values
     assert_eq!(merged.name, override_cfg.name);
@@ -786,3 +842,111 @@ fn test_sample_bad(tc: hegel::TestCase) {
     let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>())
         .max_size(50).unique());
     ```
+
+## Stateful Testing
+
+Hegel supports stateful (model-based) testing via `#[hegel::state_machine]`.
+Define rules (actions) and invariants (assertions checked after each rule),
+then run the state machine.
+
+### Defining a State Machine
+
+```rust
+use hegel::TestCase;
+use hegel::generators::integers;
+
+struct IntegerStack {
+    stack: Vec<i32>,
+}
+
+#[hegel::state_machine]
+impl IntegerStack {
+    #[rule]
+    fn push(&mut self, tc: TestCase) {
+        let element = tc.draw(integers::<i32>());
+        self.stack.push(element);
+    }
+
+    #[rule]
+    fn pop(&mut self, _: TestCase) {
+        self.stack.pop();
+    }
+
+    #[rule]
+    fn push_pop(&mut self, tc: TestCase) {
+        let initial = self.stack.clone();
+        let element = self.stack.pop();
+        tc.assume(element.is_some());
+        let element = element.unwrap();
+        self.stack.push(element);
+        assert_eq!(self.stack, initial);
+    }
+
+    #[invariant]
+    fn length_nonnegative(&self, _: TestCase) {
+        assert!(self.stack.len() < 100, "stack too large");
+    }
+}
+
+#[hegel::test]
+fn test_integer_stack(tc: TestCase) {
+    let stack = IntegerStack { stack: Vec::new() };
+    hegel::stateful::run(stack, tc);
+}
+```
+
+- **`#[rule]`** methods are actions that can be applied. They take `&mut self`
+  and `TestCase`. Use `tc.assume()` to skip a rule when it doesn't apply
+  (e.g., can't pop from an empty stack).
+- **`#[invariant]`** methods are checked after every successful rule. They take
+  `&self` and `TestCase`.
+- Call `hegel::stateful::run(machine, tc)` from a `#[hegel::test]` to execute.
+
+### Variables (Pools)
+
+For tests that need to track dynamically created resources (accounts, handles,
+keys), use `Variables`:
+
+```rust
+use hegel::stateful::{Variables, variables};
+
+struct MyTest {
+    accounts: Variables<String>,
+    // ... other state
+}
+
+#[hegel::state_machine]
+impl MyTest {
+    #[rule]
+    fn create_account(&mut self, tc: TestCase) {
+        let name = tc.draw(generators::text().min_size(1));
+        self.accounts.add(name);
+    }
+
+    #[rule]
+    fn use_account(&mut self, tc: TestCase) {
+        let account = self.accounts.draw().clone();  // borrows from pool
+        // ... do something with account
+    }
+
+    #[rule]
+    fn delete_account(&mut self, tc: TestCase) {
+        let account = self.accounts.consume();  // removes from pool
+        // ... clean up account
+    }
+}
+
+#[hegel::test]
+fn test_my_system(tc: TestCase) {
+    let test = MyTest {
+        accounts: variables(&tc),
+    };
+    hegel::stateful::run(test, tc);
+}
+```
+
+`Variables<T>` methods:
+- `.add(value)` — Add a value to the pool
+- `.draw()` — Borrow a random value (calls `assume(false)` if empty)
+- `.consume()` — Remove and return a random value (calls `assume(false)` if empty)
+- `.empty()` — Check if the pool is empty
