@@ -44,7 +44,7 @@ Or copy the skill directory manually:
 cp -r skills/hegel ~/.codex/skills/hegel
 ```
 
-### Any Agent (cross-client)
+### Any Agent
 
 Copy the skill into your project's `.agents/skills/` directory:
 
